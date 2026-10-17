@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>8-Deck Baccarat Dual-Stream Hybrid Engine</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #151c2c;
+      --border: #263147;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --banker: #ef4444;
+      --player: #3b82f6;
+      --tie: #10b981;
+      --accent: #f59e0b;
+      --good: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; max-width: 1200px; margin: 0 auto; }
+
+    /* Header & Status Bar */
+    .top-bar { display: flex; justify-content: space-between; align-items: center; background: var(--panel); padding: 12px 18px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .title-area h1 { font-size: 1.2rem; font-weight: 700; }
+    .title-area span { font-size: 0.85rem; color: var(--muted); }
+    .top-actions { display: flex; gap: 8px; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 600; color: white; background: #334155; transition: 0.15s; }
+    button:hover { filter: brightness(1.15); }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn-accent { background: var(--accent); color: #000; }
+    .btn-danger { background: #dc2626; }
+
+    /* Main Grid */
+    .grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .card-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 12px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+    #gate-badge { text-transform: none; letter-spacing: 0; }
+
+    /* Single Best Move HUD */
+    .hud-banner { text-align: center; padding: 18px; border-radius: 8px; background: #0f172a; border: 2px solid var(--border); margin-bottom: 14px; transition: border-color 0.2s, box-shadow 0.2s; }
+    .hud-banner.edge { border-color: #22c55e; box-shadow: 0 0 14px rgba(34, 197, 94, 0.35); }
+    .hud-banner.cut { border-color: var(--accent); }
+    .hud-tag { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 10px; border-radius: 999px; margin-bottom: 4px; }
+    .hud-tag.bet { background: #166534; color: #bbf7d0; }
+    .hud-tag.lean { background: #334155; color: #cbd5e1; }
+    .hud-tag.cut { background: #92400e; color: #fde68a; }
+    .hud-move { font-size: 2rem; font-weight: 800; letter-spacing: 0.04em; margin: 4px 0; }
+    .hud-sub { font-size: 0.9rem; color: var(--muted); }
+    .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .metric-box { background: #0f172a; padding: 10px; border-radius: 8px; text-align: center; border-top: 3px solid transparent; border-bottom: 3px solid transparent; }
+    .metric-box.b { border-top-color: var(--banker); }
+    .metric-box.p { border-top-color: var(--player); }
+    .metric-box.t { border-top-color: var(--tie); }
+    .metric-box.recommended { border-bottom-color: #22c55e; }
+    .metric-box .lbl { font-size: 0.8rem; color: var(--muted); }
+    .metric-box .val { font-size: 1.25rem; font-weight: 700; margin: 3px 0; }
+    .metric-box .ev { font-size: 0.8rem; }
+    .metric-box .cev { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+
+    /* Observability & Gate Bar */
+    .progress-wrap { margin-top: 8px; }
+    .progress-bar { height: 10px; background: #334155; border-radius: 5px; overflow: hidden; display: flex; margin: 6px 0; }
+    .bar-known { background: #38bdf8; }
+    .bar-ghost { background: #a855f7; }
+    .legend { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); gap: 8px; flex-wrap: wrap; }
+
+    /* Engine diagnostics */
+    .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 520px) { .diag-grid { grid-template-columns: 1fr; } }
+    .diag { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .diag .k { font-size: 0.75rem; color: var(--muted); }
+    .diag .v { font-size: 0.9rem; font-weight: 600; margin-top: 2px; }
+    .diag .n { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    /* Live Hand Table & 10-Key Pad */
+    .table-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .hand-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+    .hand-header { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 8px; font-size: 0.95rem; }
+    .slots { display: flex; gap: 8px; }
+    .slot { flex: 1; height: 48px; border-radius: 6px; background: #1e293b; border: 2px dashed #475569; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 700; }
+    .slot.active { border-color: var(--accent); background: rgba(245, 158, 11, 0.12); box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+    .slot.filled { border-style: solid; border-color: #64748b; }
+
+    .keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 14px; }
+    .key-btn { padding: 14px 0; font-size: 1.15rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; }
+    .key-btn:hover { background: #334155; border-color: var(--accent); }
+    .key-btn.key-pressed { background: var(--accent); color: #000; border-color: var(--accent); transform: scale(0.96); }
+    .key-btn.key-pressed span { color: #1e293b; }
+    .key-btn span { display: block; font-size: 0.7rem; color: var(--muted); font-weight: 400; }
+
+    .quick-log { display: flex; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); }
+    .quick-log span { font-size: 0.8rem; color: var(--muted); flex: 1; }
+    .btn-b { background: var(--banker); }
+    .btn-p { background: var(--player); }
+    .btn-t { background: var(--tie); }
+
+    /* Remaining Shoe Cards Grid */
+    .shoe-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .rank-cell { background: #0f172a; padding: 8px; border-radius: 6px; text-align: center; border: 1px solid var(--border); }
+    .rank-cell .rk { font-size: 0.8rem; color: var(--muted); }
+    .rank-cell .cnt { font-size: 1.05rem; font-weight: 700; margin-top: 2px; }
+
+    /* Bead Plate Roadmap */
+    .bead-plate { display: grid; grid-template-rows: repeat(6, 26px); grid-auto-flow: column; grid-auto-columns: 26px; gap: 4px; overflow-x: auto; padding: 6px; background: #0f172a; border-radius: 8px; min-height: 184px; }
+    .bead { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 800; color: #fff; }
+    .bead.B { background: var(--banker); }
+    .bead.P { background: var(--player); }
+    .bead.T { background: var(--tie); }
+
+    /* Modals */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 50; }
+    .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: 92%; max-width: 520px; padding: 20px; }
+    .modal h2 { margin-bottom: 8px; font-size: 1.15rem; }
+    .modal p { font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; }
+    .hist-preview { background: #0f172a; padding: 10px; border-radius: 6px; min-height: 44px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 5px; }
+    .form-row { margin-bottom: 14px; }
+    .form-row label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: var(--muted); }
+    .form-row input, .form-row select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #0f172a; color: #fff; }
+
+    /* Toast */
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 90%; background: #1e293b; border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 0.88rem; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 80; }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: #dc2626; background: #3b1219; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="title-area">
+      <h1>Dual-Stream Hybrid Baccarat Engine (8-Deck)</h1>
+      <span id="hand-counter">Hand #1 • Fresh Shoe</span>
+    </div>
+    <div class="top-actions">
+      <button onclick="openFreshModal()">New Fresh Shoe</button>
+      <button class="btn-accent" onclick="openMidShoeModal()">Join Mid-Shoe (Sync)</button>
+      <button onclick="undoLastAction()">Undo Last</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT COLUMN: HUD & SHOE INVENTORY -->
+    <div>
+      <div class="card">
+        <div class="card-title">
+          <span>Next Bet HUD</span>
+          <span id="gate-badge">Stream B Gate α: 0.02</span>
+        </div>
+
+        <div class="hud-banner" id="hud-banner">
+          <span class="hud-tag lean" id="hud-tag">LEAN</span>
+          <div class="hud-sub">BET only on a verified card edge. Otherwise: lowest house edge.</div>
+          <div class="hud-move" id="hud-best-move">BANKER</div>
+          <div class="hud-sub" id="hud-edge-note">No verified edge. Min bet or pass.</div>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-box b" id="box-b">
+            <div class="lbl">BANKER (0.95:1)</div>
+            <div class="val" id="prob-b">45.86%</div>
+            <div class="ev" id="ev-b">EV: -1.06%</div>
+            <div class="cev" id="cev-b">Card EV: -1.06%</div>
+          </div>
+          <div class="metric-box p" id="box-p">
+            <div class="lbl">PLAYER (1:1)</div>
+            <div class="val" id="prob-p">44.62%</div>
+            <div class="ev" id="ev-p">EV: -1.24%</div>
+            <div class="cev" id="cev-p">Card EV: -1.24%</div>
+          </div>
+          <div class="metric-box t" id="box-t">
+            <div class="lbl">TIE (8:1)</div>
+            <div class="val" id="prob-t">9.52%</div>
+            <div class="ev" id="ev-t">EV: -14.36%</div>
+            <div class="cev" id="cev-t">Card EV: -14.36%</div>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="legend">
+            <span id="obs-label">Observability: 100% Verified</span>
+            <span id="rem-label">416.0 / 416 Cards Left</span>
+          </div>
+          <div class="progress-bar">
+            <div class="bar-known" id="bar-known" style="width: 0%"></div>
+            <div class="bar-ghost" id="bar-ghost" style="width: 0%"></div>
+          </div>
+          <div class="legend">
+            <span>Blue: verified cards (<b id="cnt-known">0</b>)</span>
+            <span>Purple: unseen cards, estimated (<b id="cnt-ghost">0.0</b>)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Engine Diagnostics</span>
+        </div>
+        <div class="diag-grid">
+          <div class="diag">
+            <div class="k">Stream A (card model)</div>
+            <div class="v" id="diag-method">-</div>
+            <div class="n" id="diag-method-note"></div>
+          </div>
+          <div class="diag">
+            <div class="k">Stream B (sequence tilt)</div>
+            <div class="v" id="diag-seq">-</div>
+            <div class="n">Moves at most 1.2 points between Banker and Player, scaled by α. Cannot trigger a BET.</div>
+          </div>
+          <div class="diag">
+            <div class="k">Unseen-card uncertainty (1σ on EV)</div>
+            <div class="v" id="diag-sigma">-</div>
+            <div class="n">A BET needs card EV minus 1.65σ above +0.1%.</div>
+          </div>
+          <div class="diag">
+            <div class="k">Shoe status</div>
+            <div class="v" id="diag-shoe">-</div>
+            <div class="n" id="diag-shoe-note"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Estimated Remaining Shoe Composition (ECP Vector)</span>
+        </div>
+        <div class="shoe-grid" id="shoe-grid"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: KEYPAD & ROADMAP -->
+    <div>
+      <div class="card">
+        <div class="card-title">
+          <span>Live Hand Card Input (Auto 3rd-Card Rules)</span>
+          <a href="#" onclick="clearCurrentHand(); return false;" style="color: var(--accent); text-decoration: none;">Reset Hand</a>
+        </div>
+
+        <div class="table-slots">
+          <div class="hand-box">
+            <div class="hand-header" style="color: var(--player);">
+              <span>PLAYER</span>
+              <span id="p-total">Total: -</span>
+            </div>
+            <div class="slots">
+              <div class="slot" id="slot-P1"></div>
+              <div class="slot" id="slot-P2"></div>
+              <div class="slot" id="slot-P3"></div>
+            </div>
+          </div>
+          <div class="hand-box">
+            <div class="hand-header" style="color: var(--banker);">
+              <span>BANKER</span>
+              <span id="b-total">Total: -</span>
+            </div>
+            <div class="slots">
+              <div class="slot" id="slot-B1"></div>
+              <div class="slot" id="slot-B2"></div>
+              <div class="slot" id="slot-B3"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="keypad">
+          <button class="key-btn" onclick="tapCard(0)">0<span>10, J, Q, K</span></button>
+          <button class="key-btn" onclick="tapCard(1)">A<span>Value 1</span></button>
+          <button class="key-btn" onclick="tapCard(2)">2<span>Value 2</span></button>
+          <button class="key-btn" onclick="tapCard(3)">3<span>Value 3</span></button>
+          <button class="key-btn" onclick="tapCard(4)">4<span>Value 4</span></button>
+          <button class="key-btn" onclick="tapCard(5)">5<span>Value 5</span></button>
+          <button class="key-btn" onclick="tapCard(6)">6<span>Value 6</span></button>
+          <button class="key-btn" onclick="tapCard(7)">7<span>Value 7</span></button>
+          <button class="key-btn" onclick="tapCard(8)">8<span>Value 8</span></button>
+          <button class="key-btn" onclick="tapCard(9)">9<span>Value 9</span></button>
+        </div>
+
+        <div class="quick-log">
+          <span>Missed the cards? Log the winner only (updates Stream B and the unseen-card estimate):</span>
+          <button class="btn-b" onclick="logMissedHand('B')">+ Banker</button>
+          <button class="btn-p" onclick="logMissedHand('P')">+ Player</button>
+          <button class="btn-t" onclick="logMissedHand('T')">+ Tie</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Bead Plate History (Stream B Input)</span>
+          <span id="roadmap-summary">B: 0 | P: 0 | T: 0</span>
+        </div>
+        <div class="bead-plate" id="bead-plate"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW FRESH SHOE MODAL -->
+  <div class="modal-backdrop" id="fresh-modal">
+    <div class="modal">
+      <h2>New fresh shoe</h2>
+      <p>Optional: enter the face-up burn card. The engine counts it as seen and removes the burned cards from the shoe as unseen.</p>
+
+      <div class="form-row">
+        <label for="burn-first">Face-up burn card</label>
+        <select id="burn-first">
+          <option value="">No burn info</option>
+          <option value="1">A (burns 1)</option>
+          <option value="2">2 (burns 2)</option>
+          <option value="3">3 (burns 3)</option>
+          <option value="4">4 (burns 4)</option>
+          <option value="5">5 (burns 5)</option>
+          <option value="6">6 (burns 6)</option>
+          <option value="7">7 (burns 7)</option>
+          <option value="8">8 (burns 8)</option>
+          <option value="9">9 (burns 9)</option>
+          <option value="0">10, J, Q, K (burns 10)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="burn-count">Cards burned face-down (optional, 0 to 10). Leave blank to use the card value.</label>
+        <input type="number" step="1" min="0" max="10" id="burn-count" placeholder="e.g., 7" />
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button onclick="closeFreshModal()">Cancel</button>
+        <button class="btn-accent" onclick="submitFreshShoe()">Start shoe</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MID-SHOE SYNC MODAL -->
+  <div class="modal-backdrop" id="mid-modal">
+    <div class="modal">
+      <h2>Join Mid-Shoe (Scoreboard Sync)</h2>
+      <p>Tap the past outcomes shown on the casino scoreboard, enter the discard-tray estimate, or both. The engine estimates the depleted cards before you start logging live cards.</p>
+
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <button class="btn-b" style="flex:1" onclick="addSyncOutcome('B')">+ Banker</button>
+        <button class="btn-p" style="flex:1" onclick="addSyncOutcome('P')">+ Player</button>
+        <button class="btn-t" style="flex:1" onclick="addSyncOutcome('T')">+ Tie</button>
+        <button onclick="clearSyncOutcomes()">Clear</button>
+      </div>
+
+      <div class="hist-preview" id="sync-preview"></div>
+
+      <div class="form-row">
+        <label for="sync-decks">Optional: decks in the discard tray, burn cards included. Leave blank to estimate from the outcomes (about 4.94 cards per hand).</label>
+        <input type="number" step="0.5" min="0" max="7.5" id="sync-decks" placeholder="e.g., 3.5" />
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button onclick="closeMidShoeModal()">Cancel</button>
+        <button class="btn-accent" onclick="submitMidShoeSync()">Initialize Mid-Shoe</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // --- PUNTO BANCO LIVE HAND STATE ---
+    // Deal order: P1 -> B1 -> P2 -> B2 -> (Optional P3) -> (Optional B3)
+    let handCards = { P1: null, B1: null, P2: null, B2: null, P3: null, B3: null };
+    let nextSlot = "P1";
+    let syncOutcomes = [];
+    const MAX_SYNC_HANDS = 100; // matches backend MAX_HANDS_PER_SHOE
+
+    // --- SMALL HELPERS ---
+    let toastTimer = null;
+    function showToast(msg, isError = false) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.className = "toast show" + (isError ? " error" : "");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.className = "toast" + (isError ? " error" : ""); }, 4500);
+    }
+
+    function formatError(data) {
+      if (!data) return "Request failed.";
+      if (typeof data.detail === "string") return data.detail;
+      if (Array.isArray(data.detail)) return data.detail.map(d => d.msg).join("; ");
+      return "Request failed.";
+    }
+
+    // POST to the backend. Returns the parsed response, or null after showing the error.
+    async function api(path, body) {
+      try {
+        const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        const res = await fetch(path, opts);
+        let data = null;
+        try { data = await res.json(); } catch (_) { /* non-JSON body */ }
+        if (!res.ok) {
+          showToast(formatError(data), true);
+          return null;
+        }
+        return data;
+      } catch (err) {
+        showToast("Can't reach the server. Check that uvicorn is running.", true);
+        return null;
+      }
+    }
+
+    const signed = (v, nd = 2) => (v > 0 ? "+" : "") + Number(v).toFixed(nd);
+
+    // --- LIVE HAND UI ---
+    function updateSlotUI() {
+      const slots = ["P1", "B1", "P2", "B2", "P3", "B3"];
+      slots.forEach(s => {
+        const el = document.getElementById("slot-" + s);
+        el.textContent = handCards[s] !== null ? (handCards[s] === 1 ? "A" : handCards[s]) : "";
+        el.className = "slot" + (handCards[s] !== null ? " filled" : "") + (nextSlot === s ? " active" : "");
+      });
+
+      const pArr = [handCards.P1, handCards.P2, handCards.P3].filter(x => x !== null);
+      const bArr = [handCards.B1, handCards.B2, handCards.B3].filter(x => x !== null);
+      document.getElementById("p-total").textContent = pArr.length ? "Total: " + (pArr.reduce((a,b)=>a+b,0) % 10) : "Total: -";
+      document.getElementById("b-total").textContent = bArr.length ? "Total: " + (bArr.reduce((a,b)=>a+b,0) % 10) : "Total: -";
+    }
+
+    function clearCurrentHand() {
+      handCards = { P1: null, B1: null, P2: null, B2: null, P3: null, B3: null };
+      nextSlot = "P1";
+      updateSlotUI();
+    }
+
+    function doesBankerDraw(bTotal, p3) {
+      if (p3 === null) return bTotal <= 5;
+      if (bTotal <= 2) return true;
+      if (bTotal === 3) return p3 !== 8;
+      if (bTotal === 4) return p3 >= 2 && p3 <= 7;
+      if (bTotal === 5) return p3 >= 4 && p3 <= 7;
+      if (bTotal === 6) return p3 === 6 || p3 === 7;
+      return false;
+    }
+
+    async function tapCard(rank) {
+      if (!nextSlot) return;
+      handCards[nextSlot] = rank;
+
+      if (nextSlot === "P1") nextSlot = "B1";
+      else if (nextSlot === "B1") nextSlot = "P2";
+      else if (nextSlot === "P2") nextSlot = "B2";
+      else if (nextSlot === "B2") {
+        // Evaluate 4-card state using official Punto Banco tableau
+        const pTot = (handCards.P1 + handCards.P2) % 10;
+        const bTot = (handCards.B1 + handCards.B2) % 10;
+        if (pTot >= 8 || bTot >= 8) {
+          nextSlot = null; // Natural 8 or 9 — hand over
+        } else if (pTot <= 5) {
+          nextSlot = "P3"; // Player draws 3rd card
+        } else if (bTot <= 5) {
+          nextSlot = "B3"; // Player stands on 6/7, Banker draws on 0-5
+        } else {
+          nextSlot = null; // Both stand
+        }
+      } else if (nextSlot === "P3") {
+        const bTot = (handCards.B1 + handCards.B2) % 10;
+        if (doesBankerDraw(bTot, handCards.P3)) {
+          nextSlot = "B3";
+        } else {
+          nextSlot = null;
+        }
+      } else if (nextSlot === "B3") {
+        nextSlot = null;
+      }
+
+      updateSlotUI();
+
+      // If hand is complete, automatically send to Python backend
+      if (nextSlot === null) {
+        const pCards = [handCards.P1, handCards.P2, handCards.P3].filter(x => x !== null);
+        const bCards = [handCards.B1, handCards.B2, handCards.B3].filter(x => x !== null);
+        setTimeout(async () => {
+          const data = await api("/api/hand", { player_cards: pCards, banker_cards: bCards });
+          if (data) renderDashboard(data);
+          // Clear either way: after a rejected hand the server state is untouched, so re-enter it.
+          clearCurrentHand();
+        }, 260);
+      }
+    }
+
+    // --- API CALLS ---
+    async function startFreshShoe(burnFirst = null, burnCount = null) {
+      clearCurrentHand();
+      const data = await api("/api/init", {
+        mode: "fresh",
+        missed_history: [],
+        burn_first_card: burnFirst,
+        burn_count: burnCount
+      });
+      if (data) renderDashboard(data);
+      return !!data;
+    }
+
+    async function logMissedHand(outcome) {
+      const data = await api("/api/missed", { outcome });
+      if (data) renderDashboard(data);
+    }
+
+    async function undoLastAction() {
+      clearCurrentHand();
+      const data = await api("/api/undo");
+      if (data) renderDashboard(data);
+    }
+
+    // --- RENDERING ---
+    function renderDashboard(data) {
+      const shoe = data.shoe_status;
+      const streams = data.streams;
+      const rec = data.recommendation;
+
+      document.getElementById("hand-counter").textContent =
+        `Hand #${data.hand_number} • Verified cards: ${shoe.known_cards_dealt} | Unseen (est.): ${shoe.unseen_cards_est}`;
+      document.getElementById("gate-badge").textContent =
+        `Stream B Gate α: ${streams.gate_alpha} | Stream A Weight: ${(1 - streams.gate_alpha).toFixed(2)}`;
+
+      // --- Next bet HUD ---
+      const banner = document.getElementById("hud-banner");
+      const tagEl = document.getElementById("hud-tag");
+      const moveEl = document.getElementById("hud-best-move");
+      const edgeNote = document.getElementById("hud-edge-note");
+      const colorMap = { B: "var(--banker)", P: "var(--player)", T: "var(--tie)" };
+      const code = rec.best_move_code;
+
+      if (shoe.cut_card_reached) {
+        banner.className = "hud-banner cut";
+        tagEl.className = "hud-tag cut";
+        tagEl.textContent = "CUT CARD";
+        moveEl.textContent = "LAST HAND";
+        moveEl.style.color = "var(--accent)";
+        edgeNote.textContent = "Cut card reached. Play out this hand, then start a new shoe.";
+        edgeNote.style.color = "var(--accent)";
+      } else if (rec.has_positive_edge) {
+        const lb = data.edge_lower_bound_pct[code];
+        banner.className = "hud-banner edge";
+        tagEl.className = "hud-tag bet";
+        tagEl.textContent = "BET";
+        moveEl.textContent = rec.best_move;
+        moveEl.style.color = colorMap[code];
+        edgeNote.textContent = `Verified card edge ${signed(rec.best_ev_pct)}% EV (95% floor ${signed(lb)}%). Raise bet.`;
+        edgeNote.style.color = "var(--good)";
+      } else {
+        banner.className = "hud-banner";
+        tagEl.className = "hud-tag lean";
+        tagEl.textContent = "LEAN";
+        moveEl.textContent = rec.best_move;
+        moveEl.style.color = colorMap[code];
+        edgeNote.textContent = `No verified edge. Lowest house edge (${signed(rec.best_ev_pct)}% EV). Min bet or pass.`;
+        edgeNote.style.color = "var(--muted)";
+      }
+
+      // --- Probabilities & EVs ---
+      ["b", "p", "t"].forEach(k => {
+        const up = k.toUpperCase();
+        document.getElementById("prob-" + k).textContent = streams.fused_prob_pct[up] + "%";
+
+        const evVal = data.expected_value_pct[up];
+        const evEl = document.getElementById("ev-" + k);
+        evEl.textContent = `EV: ${signed(evVal)}%`;
+        evEl.style.color = evVal > 0 ? "var(--good)" : "var(--muted)";
+
+        const cardEv = data.ecp_ev_pct[up];
+        const floor = data.edge_lower_bound_pct[up];
+        document.getElementById("cev-" + k).textContent = `Card EV: ${signed(cardEv)}% (floor ${signed(floor)}%)`;
+
+        document.getElementById("box-" + k).classList.toggle(
+          "recommended", rec.has_positive_edge && !shoe.cut_card_reached && code === up
+        );
+      });
+
+      // --- Progress bar ---
+      const knownPct = (shoe.known_cards_dealt / 416) * 100;
+      const ghostPct = (shoe.unseen_cards_est / 416) * 100;
+      document.getElementById("bar-known").style.width = knownPct + "%";
+      document.getElementById("bar-ghost").style.width = ghostPct + "%";
+      document.getElementById("cnt-known").textContent = shoe.known_cards_dealt;
+      document.getElementById("cnt-ghost").textContent = shoe.unseen_cards_est;
+      document.getElementById("obs-label").textContent = `Observability: ${shoe.observability_pct}% Verified`;
+      document.getElementById("rem-label").textContent = `${shoe.remaining_cards_est} / 416 Cards Left`;
+
+      // --- Diagnostics ---
+      const isExact = streams.method === "exact";
+      document.getElementById("diag-method").textContent = isExact ? "Exact enumeration" : "Linear EOR model";
+      document.getElementById("diag-method-note").textContent = isExact
+        ? "Full composition-dependent calculation (late shoe)."
+        : `First-order model. Banker/Player cross-check gap: ${(streams.eor_consistency_gap * 100).toFixed(4)} pts.`;
+
+      const m = streams.seq_imbalance;
+      let seqText = "Balanced, no tilt";
+      if (m > 0.1) seqText = `Banker-heavy (${signed(m)}), tilting to Player`;
+      else if (m < -0.1) seqText = `Player-heavy (${signed(m)}), tilting to Banker`;
+      document.getElementById("diag-seq").textContent = seqText;
+
+      const sg = data.ev_sigma_pct;
+      document.getElementById("diag-sigma").textContent = `B ±${sg.B.toFixed(2)}% | P ±${sg.P.toFixed(2)}% | T ±${sg.T.toFixed(2)}%`;
+
+      document.getElementById("diag-shoe").textContent = shoe.cut_card_reached ? "Cut card reached" : "Cut card not reached";
+      document.getElementById("diag-shoe").style.color = shoe.cut_card_reached ? "var(--accent)" : "";
+      document.getElementById("diag-shoe-note").textContent =
+        shoe.burn_cards > 0 ? `${shoe.burn_cards} burn cards removed at the start.` : "No burn cards recorded.";
+
+      // --- Shoe remaining grid ---
+      const grid = document.getElementById("shoe-grid");
+      grid.innerHTML = "";
+      const labels = ["0 (10-K)", "Ace (1)", "2", "3", "4", "5", "6", "7", "8", "9"];
+      shoe.remaining_vector.forEach((cnt, idx) => {
+        const initCnt = shoe.initial_vector[idx];
+        const cell = document.createElement("div");
+        cell.className = "rank-cell";
+        cell.innerHTML = `<div class="rk">${labels[idx]}</div><div class="cnt">${cnt} <span style="font-size:0.75rem;color:var(--muted)">/${initCnt}</span></div>`;
+        grid.appendChild(cell);
+      });
+
+      // --- Bead plate roadmap ---
+      const plate = document.getElementById("bead-plate");
+      plate.innerHTML = "";
+      let counts = { B: 0, P: 0, T: 0 };
+      data.history.forEach(h => {
+        counts[h] = (counts[h] || 0) + 1;
+        const bead = document.createElement("div");
+        bead.className = "bead " + h;
+        bead.textContent = h;
+        plate.appendChild(bead);
+      });
+      document.getElementById("roadmap-summary").textContent = `B: ${counts.B} | P: ${counts.P} | T: ${counts.T}`;
+    }
+
+    // --- FRESH SHOE MODAL ---
+    function openFreshModal() {
+      document.getElementById("burn-first").value = "";
+      document.getElementById("burn-count").value = "";
+      document.getElementById("fresh-modal").style.display = "flex";
+    }
+    function closeFreshModal() {
+      document.getElementById("fresh-modal").style.display = "none";
+    }
+    async function submitFreshShoe() {
+      const firstVal = document.getElementById("burn-first").value;
+      const countVal = document.getElementById("burn-count").value;
+      const burnFirst = firstVal === "" ? null : parseInt(firstVal, 10);
+      const burnCount = countVal === "" ? null : parseInt(countVal, 10);
+      if (burnCount !== null && (isNaN(burnCount) || burnCount < 0 || burnCount > 10)) {
+        showToast("Burn count must be a whole number from 0 to 10.", true);
+        return;
+      }
+      if (await startFreshShoe(burnFirst, burnCount)) closeFreshModal();
+    }
+
+    // --- MID-SHOE MODAL ---
+    function openMidShoeModal() {
+      syncOutcomes = [];
+      document.getElementById("sync-decks").value = "";
+      renderSyncPreview();
+      document.getElementById("mid-modal").style.display = "flex";
+    }
+    function closeMidShoeModal() {
+      document.getElementById("mid-modal").style.display = "none";
+    }
+    function addSyncOutcome(o) {
+      if (syncOutcomes.length >= MAX_SYNC_HANDS) {
+        showToast(`A shoe holds at most ${MAX_SYNC_HANDS} hands. Clear the list to start again.`, true);
+        return;
+      }
+      syncOutcomes.push(o);
+      renderSyncPreview();
+    }
+    function clearSyncOutcomes() {
+      syncOutcomes = [];
+      renderSyncPreview();
+    }
+    function renderSyncPreview() {
+      const box = document.getElementById("sync-preview");
+      box.innerHTML = syncOutcomes.map(o => `<div class="bead ${o}">${o}</div>`).join("");
+    }
+    async function submitMidShoeSync() {
+      const decksVal = parseFloat(document.getElementById("sync-decks").value);
+      const hasDecks = !isNaN(decksVal);
+      if (!syncOutcomes.length && !hasDecks) {
+        showToast("Add at least one past outcome or a discard-tray estimate.", true);
+        return;
+      }
+      const data = await api("/api/init", {
+        mode: "mid_shoe",
+        missed_history: syncOutcomes,
+        estimated_discard_decks: hasDecks ? decksVal : null
+      });
+      if (data) {
+        renderDashboard(data);
+        closeMidShoeModal();
+      }
+    }
+
+    // Initialize on load
+    updateSlotUI();
+    startFreshShoe();
+
+    // --- KEYBOARD SHORTCUTS (KEYBINDS) ---
+    function flashKeyButton(rank) {
+      const btns = document.querySelectorAll(".key-btn");
+      if (btns[rank]) {
+        btns[rank].classList.add("key-pressed");
+        setTimeout(() => btns[rank].classList.remove("key-pressed"), 140);
+      }
+    }
+
+    function stepBackOneCardOrUndo() {
+      const order = ["P1", "B1", "P2", "B2", "P3", "B3"];
+      let lastFilled = null;
+      for (let i = order.length - 1; i >= 0; i--) {
+        if (handCards[order[i]] !== null) {
+          lastFilled = order[i];
+          break;
+        }
+      }
+      if (lastFilled) {
+        // Undo just the last card tapped in the current hand
+        handCards[lastFilled] = null;
+        nextSlot = lastFilled;
+        updateSlotUI();
+      } else {
+        // Current hand is empty -> undo the previous submitted hand on the server
+        undoLastAction();
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const midOpen = document.getElementById("mid-modal").style.display === "flex";
+      const freshOpen = document.getElementById("fresh-modal").style.display === "flex";
+
+      // 1. Do not hijack keys while typing in an input or choosing in a select
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
+        if (e.key === "Escape") document.activeElement.blur();
+        else if (e.key === "Enter" && midOpen) submitMidShoeSync();
+        else if (e.key === "Enter" && freshOpen) submitFreshShoe();
+        return;
+      }
+
+      const key = e.key.toUpperCase();
+
+      // 2. Fresh-shoe modal: only Enter / Escape do anything
+      if (freshOpen) {
+        if (e.key === "Escape") { e.preventDefault(); closeFreshModal(); }
+        else if (e.key === "Enter") { e.preventDefault(); submitFreshShoe(); }
+        return;
+      }
+
+      // 3. Mid-shoe modal: route B / P / T / Backspace / Escape / Enter to the modal
+      if (midOpen) {
+        if (key === "B" || key === "P" || key === "T") {
+          e.preventDefault();
+          addSyncOutcome(key);
+        } else if (e.key === "Backspace") {
+          e.preventDefault();
+          syncOutcomes.pop();
+          renderSyncPreview();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closeMidShoeModal();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          submitMidShoeSync();
+        }
+        return;
+      }
+
+      // 4. Live hand card keybinds: digits 0 - 9 (top row and numpad)
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        const rank = parseInt(e.key, 10);
+        flashKeyButton(rank);
+        tapCard(rank);
+        return;
+      }
+
+      // 5. Face cards (J, Q, K -> 0) and Ace (A -> 1)
+      if (key === "A") {
+        e.preventDefault();
+        flashKeyButton(1);
+        tapCard(1);
+      } else if (key === "J" || key === "Q" || key === "K") {
+        e.preventDefault();
+        flashKeyButton(0);
+        tapCard(0);
+      }
+      // 6. Quick-log missed hand outcomes (B, P, T)
+      else if (key === "B" || key === "P" || key === "T") {
+        e.preventDefault();
+        logMissedHand(key);
+      }
+      // 7. Backspace (deletes last card in hand, or undoes last hand if empty)
+      else if (e.key === "Backspace") {
+        e.preventDefault();
+        stepBackOneCardOrUndo();
+      }
+      // 8. Escape (resets current hand slots)
+      else if (e.key === "Escape") {
+        e.preventDefault();
+        clearCurrentHand();
+      }
+    });
+  </script>
+</body>
+</html>

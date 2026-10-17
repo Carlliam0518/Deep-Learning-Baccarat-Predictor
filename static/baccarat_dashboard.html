@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Baccarat Vision & Probability Engine</title>
+    <!-- Tailwind CSS CDN for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400,500,600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-6">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-center bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-amber-400">Baccarat AI Companion</h1>
+                <p class="text-sm text-slate-400">Live 8-Deck Shoe Tracker & Monte Carlo EV Engine</p>
+            </div>
+            <div class="flex items-center space-x-3 bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
+                <span id="status-dot" class="h-3 w-3 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="status-text" class="text-xs font-medium text-slate-300">Waiting for live_capture.py...</span>
+            </div>
+        </header>
+
+        <!-- Top Grid: Probabilities & Optimal Recommendation -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- Player Odds Card -->
+            <div class="bg-slate-900 border border-blue-900/50 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 text-blue-500/20 font-black text-6xl">P</div>
+                <h3 class="text-sm font-semibold tracking-wider text-blue-400 uppercase">Player Win</h3>
+                <div id="player-win" class="text-4xl font-extrabold mt-2 text-white">0.00%</div>
+                <div id="player-ev" class="text-xs font-medium text-slate-400 mt-2">EV: 0.000%</div>
+            </div>
+
+            <!-- Banker Odds Card -->
+            <div class="bg-slate-900 border border-orange-900/50 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 text-orange-500/20 font-black text-6xl">B</div>
+                <h3 class="text-sm font-semibold tracking-wider text-orange-400 uppercase">Banker Win</h3>
+                <div id="banker-win" class="text-4xl font-extrabold mt-2 text-white">0.00%</div>
+                <div id="banker-ev" class="text-xs font-medium text-slate-400 mt-2">EV: 0.000%</div>
+            </div>
+
+            <!-- Tie Odds Card -->
+            <div class="bg-slate-900 border border-emerald-900/50 p-6 rounded-2xl shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 text-emerald-500/20 font-black text-6xl">T</div>
+                <h3 class="text-sm font-semibold tracking-wider text-emerald-400 uppercase">Tie Win</h3>
+                <div id="tie-win" class="text-4xl font-extrabold mt-2 text-white">0.00%</div>
+                <div id="tie-ev" class="text-xs font-medium text-slate-400 mt-2">EV: 0.000%</div>
+            </div>
+
+        </div>
+
+        <!-- Optimal Recommendation Banner -->
+        <div class="bg-gradient-to-r from-amber-950/60 to-slate-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl flex justify-between items-center">
+            <div>
+                <span class="text-xs font-bold text-amber-400 uppercase tracking-widest">Mathematical Recommendation</span>
+                <div id="recommended-edge" class="text-xl font-bold text-white mt-1">Analyzing shoe composition...</div>
+            </div>
+            <div class="text-right">
+                <span class="text-xs text-slate-400">Cards Remaining in Shoe</span>
+                <div id="cards-remaining" class="text-2xl font-black text-amber-400">416 / 416</div>
+            </div>
+        </div>
+
+        <!-- Bottom Grid: Shoe Composition & Recent Cards -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Shoe Inventory Table (0-9) -->
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+                <h3 class="text-base font-bold text-slate-200 mb-4">Remaining Shoe Composition (By Point Value)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-xs text-slate-400 uppercase">
+                                <th class="py-3 px-4">Card Value</th>
+                                <th class="py-3 px-4">Points</th>
+                                <th class="py-3 px-4 text-right">Cards Left</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shoe-table-body" class="divide-y divide-slate-800/50 text-sm">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Dealt Cards History -->
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col">
+                <h3 class="text-base font-bold text-slate-200 mb-4">Recent Dealt Card History</h3>
+                <div id="card-history-container" class="space-y-3 overflow-y-auto max-h-[300px] pr-2">
+                    <p class="text-sm text-slate-500 italic">No cards detected yet...</p>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- JavaScript Poll Engine -->
+    <script>
+        async function fetchLiveState() {
+            try {
+                // Fetch live JSON exported by baccarat_engine.py
+                const response = await fetch('./checkpoints/live_baccarat_state.json?t=' + Date.now());
+                if (!response.ok) throw new Error("File not found");
+                const data = await response.json();
+
+                // Update Status Indicator
+                document.getElementById('status-dot').className = "h-3 w-3 rounded-full bg-emerald-500 animate-pulse";
+                document.getElementById('status-text').innerText = "Connected to live_capture.py";
+
+                // Update Probabilities & EV
+                const p = data.probabilities;
+                document.getElementById('player-win').innerText = p["Player Win (%)"] + "%";
+                document.getElementById('player-ev').innerText = `EV: ${p["Player EV (%)"] >= 0 ? '+' : ''}${p["Player EV (%)"]}%`;
+
+                document.getElementById('banker-win').innerText = p["Banker Win (%)"] + "%";
+                document.getElementById('banker-ev').innerText = `EV: ${p["Banker EV (%)"] >= 0 ? '+' : ''}${p["Banker EV (%)"]}%`;
+
+                document.getElementById('tie-win').innerText = p["Tie (%)"] + "%";
+                document.getElementById('tie-ev').innerText = `EV: ${p["Tie EV (%)"] >= 0 ? '+' : ''}${p["Tie EV (%)"]}%`;
+
+                document.getElementById('cards-remaining').innerText = `${p["Cards Remaining"]} / 416`;
+                document.getElementById('recommended-edge').innerText = p["Recommended Edge"];
+
+                // Update Shoe Inventory Table
+                const tbody = document.getElementById('shoe-table-body');
+                tbody.innerHTML = '';
+                const counts = data.shoe_counts;
+                for (let val = 0; val <= 9; val++) {
+                    const count = counts[val] || 0;
+                    const desc = val === 0 ? "10, J, Q, K (0 Pts)" : `Single Card (${val} Pt)`;
+                    const row = `
+                        <tr class="hover:bg-slate-800/30">
+                            <td class="py-3 px-4 font-medium text-slate-300">Value ${val}</td>
+                            <td class="py-3 px-4 text-xs text-slate-400">${desc}</td>
+                            <td class="py-3 px-4 text-right font-bold text-amber-400">${count}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                }
+
+                // Update Recent Cards History
+                const historyContainer = document.getElementById('card-history-container');
+                const history = data.recent_cards;
+                if (history && history.length > 0) {
+                    historyContainer.innerHTML = '';
+                    [...history].reverse().forEach(card => {
+                        const badgeColor = card.slot.startsWith("Player") ? "bg-blue-950 text-blue-400 border-blue-800" : "bg-orange-950 text-orange-400 border-orange-800";
+                        const item = `
+                            <div class="flex justify-between items-center bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
+                                <span class="text-xs font-semibold px-2.5 py-1 rounded-lg border ${badgeColor}">${card.slot}</span>
+                                <span class="text-sm font-bold text-white capitalize">${card.card_name}</span>
+                                <span class="text-xs font-mono text-slate-400">Pts: ${card.baccarat_val}</span>
+                            </div>
+                        `;
+                        historyContainer.innerHTML += item;
+                    });
+                }
+
+            } catch (error) {
+                // Handle missing JSON or connection drop
+                document.getElementById('status-dot').className = "h-3 w-3 rounded-full bg-rose-500";
+                document.getElementById('status-text').innerText = "Waiting for python live_capture.py...";
+            }
+        }
+
+        // Poll every 1000ms (1 second)
+        setInterval(fetchLiveState, 1000);
+        fetchLiveState();
+    </script>
+</body>
+</html>
