@@ -1,10 +1,4 @@
-# Deep-Learning-Baccarat-Predictor
 
-Here is your updated, complete **`README.md`** file. It now includes step-by-step instructions for setting up a Python virtual environment (`venv`) and configuring it inside Visual Studio Code (VS Code) so all your packages run smoothly.
-
----
-
-```markdown
 # Baccarat AI Companion: Vision + 8-Deck Shoe Counting Engine
 
 An end-to-end, modular deep learning computer vision and probability analytics system built with **PyTorch**, **OpenCV**, and **Tailwind CSS**. This project automatically captures live online Baccarat gameplay from your monitor screen, recognizes dealt playing cards in real time using fine-tuned transfer learning models (`ResNet50` and `MobileNetV3`), updates an 8-deck (416-card) shoe inventory, and computes live Monte Carlo Expected Value (EV) odds.
